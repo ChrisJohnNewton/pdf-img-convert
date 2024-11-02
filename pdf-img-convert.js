@@ -43,7 +43,7 @@ NodeCanvasFactory.prototype = {
 };
 
 // Main conversion function
-export async function convert(pdf, conversion_config = {}) {
+export async function* convert(pdf, conversion_config = {}) {
   let pdfData = pdf;
 
   // Determine the source of the PDF (URL, Base64, file path, etc.)
@@ -62,7 +62,6 @@ export async function convert(pdf, conversion_config = {}) {
     return pdf;
   }
 
-  const outputPages = [];
   const loadingTask = getDocument({ data: pdfData, disableFontFace: true, verbosity: 0 });
   const pdfDocument = await loadingTask.promise;
 
@@ -74,26 +73,15 @@ export async function convert(pdf, conversion_config = {}) {
 
   const pageNumbers = conversion_config.page_numbers || Array.from({ length: pdfDocument.numPages }, (_, i) => i + 1);
 
-  // Process pages in parallel
-  const pagePromises = pageNumbers.map(pageNo =>
-      docRender(pdfDocument, pageNo, canvasFactory, conversion_config)
-          .then(currentPage => {
-            if (currentPage != null) {
-              return conversion_config.base64
-                  ? currentPage.toString('base64')
-                  : new Uint8Array(currentPage);
-            }
-          })
-  );
-
-  const results = await Promise.all(pagePromises);
-  results.forEach(result => {
-    if (result) {
-      outputPages.push(result);
+  // Process pages one by one
+  for (const pageNo of pageNumbers) {
+    const currentPage = await docRender(pdfDocument, pageNo, canvasFactory, conversion_config);
+    if (currentPage != null) {
+      yield conversion_config.base64
+        ? currentPage.toString('base64')
+        : new Uint8Array(currentPage);
     }
-  });
-
-  return outputPages;
+  }
 }
 
 // Render PDF pages
